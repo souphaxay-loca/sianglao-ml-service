@@ -76,7 +76,7 @@ class Config:
         "include_confidence": True,     # Include confidence scores
         "include_timing": True,         # Include processing times
         "include_audio_info": True,     # Include audio duration/info
-        "clean_predictions": False,      # Apply <unk> → space cleaning
+        "clean_predictions": True,      # Apply <unk> → space cleaning
         "decimal_precision": 4          # Decimal places for confidence/timing
     }
     
@@ -114,7 +114,12 @@ class Config:
         ],
         "log_level": "INFO",           # DEBUG, INFO, WARNING, ERROR
         "enable_cors": True,           # Enable CORS for development
-        "verbose_responses": True      # Include extra info in responses
+        "verbose_responses": True,     # Include extra info in responses
+        # Demo-specific settings
+        "demo_mode": True,             # Enable demo features
+        "demo_console_output": True,   # Enhanced console logging
+        "show_inference_timing": True, # Display timing info
+        "friendly_error_messages": True # User-friendly errors
     }
 
 

@@ -97,9 +97,21 @@ def create_error_response(message: str, status_code: int = 400,
     if include_details is None:
         include_details = config.ERROR_CONFIG["include_error_details"]
     
+    # Demo-friendly error messages
+    demo_messages = {
+        "No audio file provided": "Please provide a WAV audio file",
+        "Models not loaded": "Inference models are loading, please wait",
+        "Only WAV files are supported": "Please upload a WAV format audio file",
+        "Empty audio file": "Audio file is empty or corrupted",
+        "No audio file selected": "Please select an audio file to upload"
+    }
+    
+    display_message = demo_messages.get(message, message)
+    
     response = {
         "success": False,
-        "error": message,
+        "error": display_message,
+        "technical_error": message if display_message != message else None,
         "timestamp": datetime.now().isoformat(),
         "service": SERVICE_INFO["service"]
     }
@@ -127,6 +139,13 @@ def create_success_response(data: dict, processing_time: float = None,
     # Add audio information if requested
     if config.RESPONSE_CONFIG["include_audio_info"] and audio_duration is not None:
         response["audio_duration"] = round(audio_duration, config.RESPONSE_CONFIG["decimal_precision"])
+    
+    # Add demo-friendly display info
+    response["display_info"] = {
+        "processing_time_text": f"{processing_time:.2f}s" if processing_time else None,
+        "audio_duration_text": f"{audio_duration:.1f}s" if audio_duration else None,
+        "timestamp_text": datetime.now().strftime("%H:%M:%S")
+    }
     
     return jsonify(response)
 
@@ -166,7 +185,11 @@ def health_check():
         "uptime_seconds": round(uptime, 1),
         "available_models": AVAILABLE_MODELS,
         "loaded_models": list(get_models_status().get("loaded_models", [])),
-        "timestamp": datetime.now().isoformat()
+        "timestamp": datetime.now().isoformat(),
+        # Demo-specific info
+        "inference_ready": MODELS_LOADED,
+        "total_inferences": get_models_status().get("inference_count", 0),
+        "service_uptime_minutes": round(uptime / 60, 1)
     }
     
     status_code = 200 if MODELS_LOADED else 503
@@ -314,12 +337,14 @@ def initialize_service():
     """Initialize the ML service"""
     global MODELS_LOADED, STARTUP_TIME, STARTUP_DURATION
     
-    print("🚀 Initializing Sianglao ML Service")
-    print("=" * 60)
-    print(f"Service: {SERVICE_INFO['service']}")
-    print(f"Version: {SERVICE_INFO['version']}")
-    print(f"Models: {', '.join(AVAILABLE_MODELS)}")
-    print("=" * 60)
+    # Demo-friendly startup banner
+    print("\n" + "🎤" * 30)
+    print("   SIANGLAO LAO ASR INFERENCE SERVICE")
+    print("🎤" * 30)
+    print(f"📍 Service URL: http://{config.FLASK_HOST}:{config.FLASK_PORT}")
+    print(f"🎯 Ready for Lao speech recognition!")
+    print(f"🤖 Models to load: {', '.join(AVAILABLE_MODELS)}")
+    print("🎤" * 30)
     
     STARTUP_TIME = time.time()
     
@@ -345,6 +370,8 @@ def initialize_service():
     if MODELS_LOADED:
         print(f"\n🎉 Service initialized successfully in {STARTUP_DURATION}s")
         print(f"🌐 Ready to serve requests on {config.FLASK_HOST}:{config.FLASK_PORT}")
+        print(f"🚀 Loaded models: {', '.join(get_models_status().get('loaded_models', []))}")
+        print("🎤" * 30 + "\n")
         return True
     else:
         print("\n❌ Service initialization failed")

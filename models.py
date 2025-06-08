@@ -29,6 +29,8 @@ class ModelManager:
         self.processors = {}
         self.device = self._get_device()
         self.loaded = False
+        self.inference_count = 0
+        self.start_time = time.time()
         
         print(f"🚀 Initializing Model Manager")
         print(f"💻 Device: {self.device}")
@@ -153,13 +155,16 @@ class ModelManager:
         
         try:
             start_time = time.time()
+            current_time = time.strftime("%H:%M:%S")
             
             # Get model and processor
             model = self.models[model_name]
             processor = self.processors[model_name]
             
+            # Demo-friendly logging
+            print(f"🎯 [{current_time}] Predicting with {model_name.upper()}")
+            
             # Preprocess audio
-            print(f"🎵 Processing audio for {model_name}...")
             inputs = processor(
                 audio_data,
                 sampling_rate=sample_rate,
@@ -171,7 +176,6 @@ class ModelManager:
             inputs = {k: v.to(self.device) for k, v in inputs.items()}
             
             # Run inference
-            print(f"🧠 Running inference on {model_name}...")
             with torch.no_grad():
                 logits = model(**inputs).logits
             
@@ -191,17 +195,20 @@ class ModelManager:
                 cleaned_prediction = prediction.strip()
             
             processing_time = time.time() - start_time
+            self.inference_count += 1
             
             result = {
                 "model": model_name,
-                "prediction": cleaned_prediction,
+                "cleaned_prediction": cleaned_prediction,
                 "raw_prediction": prediction.strip(),
                 "confidence": round(confidence, config.RESPONSE_CONFIG["decimal_precision"]),
                 "processing_time": round(processing_time, config.RESPONSE_CONFIG["decimal_precision"]),
+                "inference_id": self.inference_count,
                 "success": True
             }
             
-            # print(f"✅ {model_name} prediction: '{cleaned_prediction}' (conf: {confidence:.3f})")
+            # Demo-friendly completion logging
+            print(f"✅ [{model_name.upper()}] '{cleaned_prediction}' (confidence: {confidence:.1%}, {processing_time:.2f}s)")
             return result
             
         except Exception as e:
@@ -278,6 +285,7 @@ class ModelManager:
             "device": self.device,
             "available_models": AVAILABLE_MODELS,
             "loaded_models": list(self.models.keys()),
+            "inference_count": self.inference_count,
             "models": {}
         }
         
