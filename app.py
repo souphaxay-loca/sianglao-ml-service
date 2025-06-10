@@ -22,7 +22,8 @@ from models import (
     get_models_status,
     is_models_loaded,
     validate_model_name,
-    validate_loaded_model
+    validate_loaded_model,
+    get_device_info
 )
 
 # ================================
@@ -168,7 +169,8 @@ def root():
             "predict_all": "POST /predict",
             "predict_single": "POST /predict/<model_name>",
             "health": "GET /health", 
-            "models": "GET /models"
+            "models": "GET /models",
+            "device": "GET /device"
         }
     })
 
@@ -208,6 +210,20 @@ def models_info():
         })
     except Exception as e:
         return create_error_response(f"Error getting models info: {str(e)}", 500)
+
+
+@app.route('/device', methods=['GET'])
+def device_info():
+    """Get device information and optimization recommendations"""
+    try:
+        device_data = get_device_info()
+        return jsonify({
+            "success": True,
+            "device_info": device_data,
+            "timestamp": datetime.now().isoformat()
+        })
+    except Exception as e:
+        return create_error_response(f"Error getting device info: {str(e)}", 500)
 
 
 # ================================

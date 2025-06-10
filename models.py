@@ -7,6 +7,7 @@ Handles all 3 Lao ASR models: XLS-R, XLSR-53, HuBERT
 import time
 import torch
 import numpy as np
+import os
 from pathlib import Path
 from typing import Dict, Optional, Tuple, Union
 import warnings
@@ -44,6 +45,10 @@ class ModelManager:
             if torch.cuda.is_available():
                 device = "cuda"
                 print(f"🔥 CUDA detected: {torch.cuda.get_device_name()}")
+            elif torch.backends.mps.is_available():
+                device = "mps"
+                print("🍎 Apple Silicon GPU (MPS) detected and available")
+                print(f"💾 MPS allocated memory: {torch.mps.driver_allocated_memory() / 1024**3:.1f}GB")
             else:
                 device = "cpu"
                 print("💻 Using CPU for inference")
@@ -175,9 +180,22 @@ class ModelManager:
             # Move to device
             inputs = {k: v.to(self.device) for k, v in inputs.items()}
             
-            # Run inference
+            # Run inference with MPS fallback handling
             with torch.no_grad():
-                logits = model(**inputs).logits
+                try:
+                    logits = model(**inputs).logits
+                except RuntimeError as e:
+                    if "mps" in str(e).lower() and config.PERFORMANCE_CONFIG["mps_fallback"]:
+                        print(f"⚠️  MPS operation failed, falling back to CPU for {model_name}")
+                        # Move to CPU for this operation
+                        cpu_inputs = {k: v.cpu() for k, v in inputs.items()}
+                        cpu_model = model.cpu()
+                        logits = cpu_model(**cpu_inputs).logits
+                        # Move model back to MPS
+                        model.to(self.device)
+                        logits = logits.to(self.device)
+                    else:
+                        raise e
             
             # Calculate confidence score
             probs = torch.softmax(logits, dim=-1)
@@ -314,10 +332,13 @@ class ModelManager:
         self.models.clear()
         self.processors.clear()
         
-        # Clear CUDA cache if using GPU
+        # Clear GPU cache if using GPU
         if self.device == "cuda":
             torch.cuda.empty_cache()
             print("🧹 Cleared CUDA cache")
+        elif self.device == "mps":
+            torch.mps.empty_cache()
+            print("🧹 Cleared MPS cache")
         
         self.loaded = False
         print("✅ All models unloaded")
@@ -375,3 +396,51 @@ def validate_model_name(model_name: str) -> bool:
 def validate_loaded_model(model_name: str) -> bool:
     """Check if specific model is loaded"""
     return model_name in model_manager.models
+
+
+def get_device_info() -> Dict:
+    """Get detailed device information and optimization recommendations"""
+    info = {
+        "current_device": model_manager.device,
+        "available_devices": [],
+        "recommendations": []
+    }
+    
+    # Check available devices
+    if torch.cuda.is_available():
+        info["available_devices"].append({
+            "type": "cuda",
+            "name": torch.cuda.get_device_name(),
+            "memory": f"{torch.cuda.get_device_properties(0).total_memory / 1024**3:.1f}GB"
+        })
+    
+    if torch.backends.mps.is_available():
+        info["available_devices"].append({
+            "type": "mps", 
+            "name": "Apple Silicon GPU",
+            "allocated_memory": f"{torch.mps.driver_allocated_memory() / 1024**3:.2f}GB"
+        })
+    
+    info["available_devices"].append({
+        "type": "cpu",
+        "name": "CPU",
+        "cores": os.cpu_count()
+    })
+    
+    # Optimization recommendations
+    if model_manager.device == "mps":
+        info["recommendations"].extend([
+            "✅ Using Apple Silicon GPU acceleration",
+            "💡 For best performance, ensure sufficient system memory (16GB+ recommended)",
+            "⚡ MPS provides 2-5x speedup over CPU for transformer models",
+            "🔧 Fallback to CPU enabled for unsupported operations"
+        ])
+    elif model_manager.device == "cpu":
+        if torch.backends.mps.is_available():
+            info["recommendations"].append("💡 Apple Silicon GPU (MPS) available but not used - set device='mps' for acceleration")
+        info["recommendations"].extend([
+            "⚠️  Using CPU inference - consider GPU acceleration",
+            "🔧 Set PERFORMANCE_CONFIG['device'] = 'mps' for Apple Silicon acceleration"
+        ])
+    
+    return info

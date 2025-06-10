@@ -95,11 +95,12 @@ class Config:
     # Performance Configuration
     # ================================
     PERFORMANCE_CONFIG = {
-        "device": "auto",              # auto, cpu, cuda
+        "device": "auto",              # auto, cpu, cuda, mps
         "batch_processing": False,     # Future: support batch inference
         "model_caching": True,         # Keep models in memory
         "gradient_checkpointing": False, # Memory optimization (not needed for inference)
-        "half_precision": False        # Use FP16 (can cause issues with vocab adaptation)
+        "half_precision": False,       # Use FP16 (can cause issues with vocab adaptation)
+        "mps_fallback": True          # Fallback to CPU for unsupported MPS operations
     }
     
     # ================================
