@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  sianglao-ml:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - FLASK_ENV=development
+      - FLASK_DEBUG=1
+    volumes:
+      # Mount source code for development (optional - uncomment for live reload)
+      # - .:/app
+      # Mount test audio directory if you have test files
+      - ./test_audio:/app/test_audio
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
