@@ -56,11 +56,25 @@ python download_models.py
 ## 🚀 Usage
 
 ### Start the service
+
+#### Normal Mode (16GB+ RAM recommended)
 ```bash
 python app.py
 ```
 
-The service will start on `http://localhost:5000` by default.
+#### Low Memory Mode (8GB RAM)
+For machines with limited RAM, use model offloading mode:
+```bash
+MEMORY_MODE=low_memory python app.py
+```
+
+In low memory mode:
+- Models are loaded only when needed
+- Each model is unloaded after prediction
+- Memory usage stays around 1.2GB per request
+- Slower inference (5-10s loading time per model)
+
+The service will start on `http://localhost:8000` by default.
 
 ### API Endpoints
 

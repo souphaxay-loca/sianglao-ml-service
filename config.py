@@ -100,7 +100,8 @@ class Config:
         "model_caching": True,         # Keep models in memory
         "gradient_checkpointing": False, # Memory optimization (not needed for inference)
         "half_precision": False,       # Use FP16 (can cause issues with vocab adaptation)
-        "mps_fallback": True          # Fallback to CPU for unsupported MPS operations
+        "mps_fallback": True,          # Fallback to CPU for unsupported MPS operations
+        "memory_mode": os.getenv("MEMORY_MODE", "normal").lower()  # normal, low_memory (model offloading)
     }
     
     # ================================

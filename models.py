@@ -32,10 +32,14 @@ class ModelManager:
         self.loaded = False
         self.inference_count = 0
         self.start_time = time.time()
+        self.memory_mode = config.PERFORMANCE_CONFIG["memory_mode"]
         
         print(f"🚀 Initializing Model Manager")
         print(f"💻 Device: {self.device}")
-        print(f"🎯 Models to load: {', '.join(AVAILABLE_MODELS)}")
+        print(f"🧠 Memory mode: {self.memory_mode}")
+        if self.memory_mode == "low_memory":
+            print(f"💡 Low memory mode: Models will be loaded/unloaded for each request")
+        print(f"🎯 Models available: {', '.join(AVAILABLE_MODELS)}")
     
     def _get_device(self) -> str:
         """Determine the best device for inference"""
@@ -58,8 +62,22 @@ class ModelManager:
         return device
     
     def load_all_models(self) -> bool:
-        """Load all models on startup"""
-        print("\n📦 Loading all models...")
+        """Initialize model manager based on memory mode"""
+        if self.memory_mode == "low_memory":
+            print("\n📦 Initializing model manager with memory offloading...")
+            print("=" * 50)
+            print("💡 Models will be loaded on-demand to conserve memory")
+            print(f"🎯 Available models: {', '.join(AVAILABLE_MODELS)}")
+            print("✅ Model manager ready for offloaded inference")
+            self.loaded = True
+            return True
+        else:
+            # Original eager loading for normal mode
+            return self._load_all_models_eager()
+    
+    def _load_all_models_eager(self) -> bool:
+        """Load all models immediately (original behavior)"""
+        print("\n📦 Loading all models immediately...")
         print("=" * 50)
         
         start_time = time.time()
@@ -155,6 +173,11 @@ class ModelManager:
         if not self.loaded:
             return {"error": "Models not loaded"}
         
+        # Handle different memory modes
+        if self.memory_mode == "low_memory":
+            return self._predict_with_offloading(model_name, audio_data, sample_rate)
+        
+        # Normal mode - keep models in memory
         if model_name not in self.models:
             return {"error": f"Model {model_name} not available"}
         
@@ -238,6 +261,107 @@ class ModelManager:
             print(f"❌ {model_name} inference failed: {e}")
             return error_result
     
+    def _predict_with_offloading(self, model_name: str, audio_data: np.ndarray, 
+                                sample_rate: int = 16000) -> Optional[Dict]:
+        """Run inference with model offloading (load -> predict -> unload)"""
+        if model_name not in AVAILABLE_MODELS:
+            return {"error": f"Model {model_name} not available"}
+        
+        try:
+            start_time = time.time()
+            current_time = time.strftime("%H:%M:%S")
+            
+            print(f"🔄 [{current_time}] Loading {model_name.upper()} for prediction...")
+            
+            # Load model temporarily
+            if not self._load_single_model(model_name):
+                return {"error": f"Failed to load model {model_name}"}
+            
+            # Get model and processor
+            model = self.models[model_name]
+            processor = self.processors[model_name]
+            
+            print(f"🎯 [{current_time}] Predicting with {model_name.upper()}")
+            
+            # Preprocess audio
+            inputs = processor(
+                audio_data,
+                sampling_rate=sample_rate,
+                return_tensors="pt",
+                padding=True
+            )
+            
+            # Move to device
+            inputs = {k: v.to(self.device) for k, v in inputs.items()}
+            
+            # Run inference with MPS fallback handling
+            with torch.no_grad():
+                try:
+                    logits = model(**inputs).logits
+                except RuntimeError as e:
+                    if "mps" in str(e).lower() and config.PERFORMANCE_CONFIG["mps_fallback"]:
+                        print(f"⚠️  MPS operation failed, falling back to CPU for {model_name}")
+                        # Move to CPU for this operation
+                        cpu_inputs = {k: v.cpu() for k, v in inputs.items()}
+                        cpu_model = model.cpu()
+                        logits = cpu_model(**cpu_inputs).logits
+                        # Move model back to device (will be unloaded anyway)
+                        model.to(self.device)
+                        logits = logits.to(self.device)
+                    else:
+                        raise e
+            
+            # Calculate confidence score
+            probs = torch.softmax(logits, dim=-1)
+            max_prob = torch.max(probs, dim=-1)[0]
+            confidence = torch.mean(max_prob).item()
+            
+            # Decode prediction
+            predicted_ids = torch.argmax(logits, dim=-1)
+            prediction = processor.batch_decode(predicted_ids)[0]
+            
+            # Clean prediction (handle <unk> tokens)
+            if config.RESPONSE_CONFIG["clean_predictions"]:
+                cleaned_prediction = prediction.strip().replace("<unk>", " ")
+            else:
+                cleaned_prediction = prediction.strip()
+            
+            processing_time = time.time() - start_time
+            self.inference_count += 1
+            
+            result = {
+                "model": model_name,
+                "cleaned_prediction": cleaned_prediction,
+                "raw_prediction": prediction.strip(),
+                "confidence": round(confidence, config.RESPONSE_CONFIG["decimal_precision"]),
+                "processing_time": round(processing_time, config.RESPONSE_CONFIG["decimal_precision"]),
+                "inference_id": self.inference_count,
+                "success": True,
+                "memory_mode": "offloaded"
+            }
+            
+            print(f"✅ [{model_name.upper()}] '{cleaned_prediction}' (confidence: {confidence:.1%}, {processing_time:.2f}s)")
+            
+            # Unload model to free memory
+            print(f"🗑️ Unloading {model_name.upper()} to free memory...")
+            self._unload_single_model(model_name)
+            
+            return result
+            
+        except Exception as e:
+            # Clean up on error
+            if model_name in self.models:
+                self._unload_single_model(model_name)
+            
+            error_result = {
+                "model": model_name,
+                "error": str(e),
+                "success": False,
+                "memory_mode": "offloaded"
+            }
+            print(f"❌ {model_name} inference failed: {e}")
+            return error_result
+    
     def predict_all(self, audio_data: np.ndarray, 
                    sample_rate: int = 16000) -> Dict:
         """Run inference on all available models"""
@@ -254,9 +378,10 @@ class ModelManager:
         results = {}
         success_count = 0
         
-        # Run inference on each loaded model
+        # Run inference on each available model
         for model_name in AVAILABLE_MODELS:
-            if model_name in self.models:
+            # In low memory mode, models aren't pre-loaded, so always try predict_single
+            if self.memory_mode == "low_memory" or model_name in self.models:
                 result = self.predict_single(model_name, audio_data, sample_rate)
                 results[model_name] = result
                 
@@ -301,6 +426,7 @@ class ModelManager:
         status = {
             "loaded": self.loaded,
             "device": self.device,
+            "memory_mode": self.memory_mode,
             "available_models": AVAILABLE_MODELS,
             "loaded_models": list(self.models.keys()),
             "inference_count": self.inference_count,
@@ -311,14 +437,34 @@ class ModelManager:
             model_config = MODEL_CONFIGS[model_name]
             is_loaded = model_name in self.models
             
+            if self.memory_mode == "low_memory":
+                model_status = "available (offloaded)" if not is_loaded else "temporarily loaded"
+            else:
+                model_status = "loaded" if is_loaded else "not loaded"
+            
             status["models"][model_name] = {
                 "description": model_config["description"],
                 "path": model_config["path"],
                 "loaded": is_loaded,
+                "status": model_status,
                 "expected_cer": model_config["expected_performance"]
             }
         
         return status
+    
+    def _unload_single_model(self, model_name: str):
+        """Unload a single model from memory"""
+        if model_name in self.models:
+            del self.models[model_name]
+            del self.processors[model_name]
+            
+            # Clear GPU cache if using GPU
+            if self.device == "cuda":
+                torch.cuda.empty_cache()
+            elif self.device == "mps":
+                torch.mps.empty_cache()
+            
+            print(f"✅ {model_name.upper()} unloaded and memory cleared")
     
     def unload_models(self):
         """Unload all models from memory"""
