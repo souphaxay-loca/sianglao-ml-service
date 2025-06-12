@@ -22,19 +22,19 @@ class ModelDownloader:
     def __init__(self):
         self.model_configs = {
             "xls-r": {
-                "repo": "h3llohihi/xls-r-lao-asr",
+                "repo": "SiangLao/xls-r-lao-asr",
                 "local_path": "./saved_models/xls-r",
                 "model_class": Wav2Vec2ForCTC,
                 "description": "XLS-R-300M Lao ASR"
             },
             "xlsr-53": {
-                "repo": "h3llohihi/xlsr-53-lao-asr", 
+                "repo": "SiangLao/xlsr-53-lao-asr", 
                 "local_path": "./saved_models/xlsr-53",
                 "model_class": Wav2Vec2ForCTC,
                 "description": "XLSR-53 Lao ASR"
             },
             "hubert": {
-                "repo": "h3llohihi/hubert-lao-asr",
+                "repo": "SiangLao/hubert-lao-asr",
                 "local_path": "./saved_models/hubert", 
                 "model_class": HubertForCTC,
                 "description": "HuBERT-Large Lao ASR"

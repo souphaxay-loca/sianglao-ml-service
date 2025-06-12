@@ -24,21 +24,21 @@ class Config:
             "path": "./saved_models/xls-r",
             "model_class": "Wav2Vec2ForCTC",
             "description": "XLS-R-300M Lao ASR",
-            "repo": "h3llohihi/xls-r-lao-asr",
+            "repo": "SiangLao/xls-r-lao-asr",
             "expected_performance": 0.1514  # 15.14% CER
         },
         "xlsr-53": {
             "path": "./saved_models/xlsr-53",
             "model_class": "Wav2Vec2ForCTC", 
             "description": "XLSR-53 Lao ASR",
-            "repo": "h3llohihi/xlsr-53-lao-asr",
+            "repo": "SiangLao/xlsr-53-lao-asr",
             "expected_performance": 0.1622  # 16.22% CER
         },
         "hubert": {
             "path": "./saved_models/hubert",
             "model_class": "HubertForCTC",
             "description": "HuBERT-Large Lao ASR", 
-            "repo": "h3llohihi/hubert-lao-asr",
+            "repo": "SiangLao/hubert-lao-asr",
             "expected_performance": 0.2537  # 25.37% CER
         }
     }
